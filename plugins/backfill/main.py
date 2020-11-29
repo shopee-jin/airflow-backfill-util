@@ -13,13 +13,14 @@ from flask import request
 from flask_admin import BaseView, expose
 from flask_appbuilder import expose as app_builder_expose, BaseView as AppBuilderBaseView,has_access
 from airflow import configuration
+from airflow.bin import cli
 
 from shelljob import proc
 
 # Inspired from
 # https://mortoray.com/2014/03/04/http-streaming-of-command-output-in-python-flask/
 # https://www.endpoint.com/blog/2015/01/28/getting-realtime-output-using-python
-# RBAC inspired from 
+# RBAC inspired from
 # https://github.com/teamclairvoyant/airflow-rest-api-plugin
 
 
@@ -68,7 +69,7 @@ class Backfill(get_baseview()):
         def list(self):
             """ Render the backfill page to client with RBAC"""
             return self.render_template("backfill_page.html",
-                                        rbac_authentication_enabled=rbac_authentication_enabled)        
+                                        rbac_authentication_enabled=rbac_authentication_enabled)
     else:
         @expose('/')
         def base(self):
@@ -121,20 +122,21 @@ class Backfill(get_baseview()):
 
         # create a screen id based on timestamp
         screen_id = datetime.datetime.now().strftime('%s')
-
         if clear == 'true':
-            # Prepare the command and execute in background
-            background_cmd = f"screen -dmS {screen_id} airflow clear -c {dag_name} -s {start_date} -e {end_date}"
+            background_cmd = ['clear', '-c', str(dag_name), '-s', str(start_date), '-e', str(end_date)]
         else:
-            background_cmd = f"screen -dmS {screen_id} airflow backfill {dag_name} -s {start_date} -e {end_date}"
+            background_cmd = ['backfill', str(dag_name), '-s', str(start_date), '-e', str(end_date)]
 
         # Update command in file
-        file_ops('w', background_cmd)
+        file_ops('w', ' '.join(background_cmd))
 
-        print(background_cmd)
+        pid = os.fork()
+        if pid <= 0:
+            parser = cli.CLIFactory.get_parser()
+            cli.backfill(parser.parse_args(background_cmd))
+            os._exit(0)
 
-        os.system(background_cmd)
-
+        print(' '.join(background_cmd))
         response = json.dumps({'submitted': True})
         return flask.Response(response, mimetype='text/json')
 
