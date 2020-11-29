@@ -133,7 +133,8 @@ class Backfill(get_baseview()):
         pid = os.fork()
         if pid <= 0:
             parser = cli.CLIFactory.get_parser()
-            cli.backfill(parser.parse_args(background_cmd))
+            method_to_call = getattr(cli, background_cmd[0])
+            method_to_call(parser.parse_args(background_cmd))
             os._exit(0)
 
         print(' '.join(background_cmd))
